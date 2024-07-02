@@ -1,0 +1,108 @@
+# 项目地址：https://github.com/silentEAG/voiceload
+name: biliaudio
+
+on:
+  watch:
+    types: started
+
+env:
+  APP_NAME: voiceload
+  TARGET: aarch64-linux-android
+  MINSDKVERSION: 24
+  API: 24
+  ABI: arm64-v8a
+
+jobs:
+  build:
+    name: Build For Android aarch64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r25b
+          local-cache: true
+
+      - name: Setup Cross Compile Variable
+        env:
+          NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+          TOOLCHAIN: ${{ steps.setup-ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64
+        run: |
+          # export Environment Variable
+          echo "CC=${TOOLCHAIN}/bin/${TARGET}${API}-clang" >> "${GITHUB_ENV}"
+          echo "CC_aarch64-linux-android=${TOOLCHAIN}/bin/${TARGET}${API}-clang" >> "${GITHUB_ENV}"
+          echo "CXX=${TOOLCHAIN}/bin/${TARGET}${API}-clang++" >> "${GITHUB_ENV}"
+          echo "AR=${TOOLCHAIN}/bin/llvm-ar" >> "${GITHUB_ENV}"
+          echo "AR_aarch64-linux-android=${TOOLCHAIN}/bin/llvm-ar" >> "${GITHUB_ENV}"
+          echo "AS=${TOOLCHAIN}/bin/llvm-as" >> "${GITHUB_ENV}"
+          echo "NM=${TOOLCHAIN}/bin/llvm-nm" >> "${GITHUB_ENV}"
+          echo "OBJCOPY=${TOOLCHAIN}/bin/llvm-objcopy" >> "${GITHUB_ENV}"
+          echo "OBJDUMP=${TOOLCHAIN}/bin/llvm-objdump" >> "${GITHUB_ENV}"
+          echo "RANLIB=${TOOLCHAIN}/bin/llvm-ranlib" >> "${GITHUB_ENV}"
+          echo "RANLIB_aarch64-linux-android=${TOOLCHAIN}/bin/llvm-ranlib" >> "${GITHUB_ENV}"
+          echo "READELF=${TOOLCHAIN}/bin/llvm-readelf" >> "${GITHUB_ENV}"
+          echo "SIZE=${TOOLCHAIN}/bin/llvm-size" >> "${GITHUB_ENV}"
+          echo "STRIP=${TOOLCHAIN}/bin/llvm-strip" >> "${GITHUB_ENV}"
+          echo "STRINGS=${TOOLCHAIN}/bin/llvm-strings" >> "${GITHUB_ENV}"
+          #echo "LD=${TOOLCHAIN}/bin/${TARGET}${API}-clang" >> "${GITHUB_ENV}"
+          echo "LD=${TOOLCHAIN}/bin/ld" >> "${GITHUB_ENV}"
+          echo "SYSROOT=${TOOLCHAIN}/sysroot" >> "${GITHUB_ENV}"
+          echo "TOOLCHAIN=${TOOLCHAIN}" >> "${GITHUB_ENV}"
+          echo "NDK=${NDK}" >> "${GITHUB_ENV}"
+          echo "PATH=${TOOLCHAIN}/bin:${PATH}" >> "${GITHUB_ENV}"
+          # dir to upload result
+          #mkdir -p ${ARTIFACTSDIR}
+
+      - name: Build Binary File
+        run: |
+          export RUSTFLAGS="\
+          -C linker=${CC} \
+          -C lto=true \
+          -C codegen-units=1 \
+          -C opt-level=z \
+          -C strip=symbols \
+          -C embed-bitcode=yes"
+          printf '%s\n' "${RUSTFLAGS}"
+          
+          sed -n -e '30q' -e '13,30p' Cargo.toml
+          sed -i '24a\
+          \
+          [target.'"'cfg(target_os = "'"android"'")'.dependencies]"'\
+          openssl = { version = "0.10.64", features = ["vendored"] }' Cargo.toml
+          sed -n -e '30q' -e '13,30p' Cargo.toml
+          
+          echo ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
+          
+          #cd vl
+          sed -n -e '25q' -e '8,25p' vl/Cargo.toml
+          sed -i '18a\
+          \
+          [target.'"'cfg(target_os = "'"android"'")'.dependencies]"'\
+          openssl = { version = "0.10.64", features = ["vendored"] }' vl/Cargo.toml
+          sed -n -e '25q' -e '8,25p' vl/Cargo.toml
+          
+          sed -n -e '$q' -e '20,25p' vl/src/transfer/mod.rs
+          sed -i 's/linux/android/' vl/src/transfer/mod.rs
+          sed -n -e '$q' -e '20,25p' vl/src/transfer/mod.rs
+          sed -i '34a\
+              let FFMPEG: &str = "./ffmpeg";\
+              \
+          ' vl/src/transfer/mod.rs
+          sed -n -e '$q' -e '30,40p' vl/src/transfer/mod.rs
+          
+          rustup target add aarch64-linux-android
+          cargo build --target=aarch64-linux-android --release
+          ls target
+          mkdir -p $GITHUB_WORKSPACE/output/
+          mv ./target/aarch64-linux-android/release/voiceload $GITHUB_WORKSPACE/output/$APP_NAME
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: voiceload
+          path: output/
